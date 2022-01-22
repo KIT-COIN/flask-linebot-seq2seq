@@ -1,0 +1,14 @@
+version: '3'
+services:
+  python3:
+    restart: always
+    build: .
+    container_name: 'python3-3'
+    tty: true
+    volumes:
+      - .:/src
+    ports:
+      - 5000:5000
+    # command: python app.py
+    # volumes:
+    #   - ./opt:/root/opt
