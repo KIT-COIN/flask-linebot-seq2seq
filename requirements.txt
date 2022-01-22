@@ -1,0 +1,6 @@
+Flask==2.0.2
+line-bot-sdk==2.0.1
+TensorFlow==0.12.1
+mecab-python3==1.0
+nltk==3.3
+unidic-lite==1.0.8
