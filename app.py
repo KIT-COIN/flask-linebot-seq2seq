@@ -27,6 +27,11 @@ app.config['CHANNEL_SECRET'] = '21a4d78b5cd16fe7b22580095a364185'
 line_bot_api = LineBotApi(app.config['CHANNEL_ACCESS_TOKEN'])
 handler = WebhookHandler(app.config['CHANNEL_SECRET'])
 
+sess = tf.Session()
+
+model = translate.create_model(sess, True)
+model.batch_size = 1
+
 in_vocab_path = os.path.join(translate.FLAGS.data_dir,
                              "vocab_in.txt")
 out_vocab_path = os.path.join(translate.FLAGS.data_dir,
@@ -65,43 +70,28 @@ def callback():
 def handle_message(event):
     input_text = event.message.text
 
-    with tf.Session() as sess:
-        # print ("Hello!!")
-        model = translate.create_model(sess, True)
-        model.batch_size = 1
+    sentence = translate.wakati(input_text)
+    token_ids = data_utils.sentence_to_token_ids(sentence, in_vocab)
 
-        # in_vocab_path = os.path.join(translate.FLAGS.data_dir,
-        #                              "vocab_in.txt")
-        # out_vocab_path = os.path.join(translate.FLAGS.data_dir,
-        #                               "vocab_out.txt")
+    bucket_id = min([b for b in xrange(len(translate._buckets))
+                     if translate._buckets[b][0] > len(token_ids)])
 
-        # in_vocab, _ = data_utils.initialize_vocabulary(in_vocab_path)
-        # _, rev_out_vocab = data_utils.initialize_vocabulary(out_vocab_path)
+    encoder_inputs, decoder_inputs, target_weights = model.get_batch(
+        {bucket_id: [(token_ids, [])]}, bucket_id)
 
-        sentence = translate.wakati(input_text)
-        token_ids = data_utils.sentence_to_token_ids(sentence, in_vocab)
+    _, _, output_logits = model.step(
+        sess, encoder_inputs, decoder_inputs, target_weights, bucket_id, True)
 
-        bucket_id = min([b for b in xrange(len(translate._buckets))
-                         if translate._buckets[b][0] > len(token_ids)])
+    outputs = [int(np.argmax(logit, axis=1))
+               for logit in output_logits]
 
-        encoder_inputs, decoder_inputs, target_weights = model.get_batch(
-            {bucket_id: [(token_ids, [])]}, bucket_id)
+    if data_utils.EOS_ID in outputs:
+        outputs = outputs[:outputs.index(data_utils.EOS_ID)]
 
-        _, _, output_logits = model.step(
-            sess, encoder_inputs, decoder_inputs, target_weights, bucket_id, True)
+    reply = "".join([rev_out_vocab[output] for output in outputs])
 
-        outputs = [int(np.argmax(logit, axis=1))
-                   for logit in output_logits]
-
-        if data_utils.EOS_ID in outputs:
-            outputs = outputs[:outputs.index(data_utils.EOS_ID)]
-
-        # print("".join([rev_out_vocab[output] for output in outputs]))
-
-        reply = "".join([rev_out_vocab[output] for output in outputs])
-
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(
-            text=reply), )
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(
+        text=reply), )
 
 
 if __name__ == "__main__":
